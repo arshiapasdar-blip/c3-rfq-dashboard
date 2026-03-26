@@ -8,7 +8,7 @@ import pandas as pd
 from dotenv import load_dotenv
 
 try:
-    from azure.identity import AzureCliCredential
+    from azure.identity import DefaultAzureCredential
     from azure.keyvault.secrets import SecretClient
     _AZURE_AVAILABLE = True
 except ImportError:
@@ -56,7 +56,7 @@ def _get_kv_credentials():
     if not _AZURE_AVAILABLE:
         return None
     try:
-        credential = AzureCliCredential()
+        credential = DefaultAzureCredential()
         client = SecretClient(vault_url=_PROD_VAULT_URL, credential=credential)
         secret = client.get_secret(_KV_SECRET_NAME)
         return _parse_connection_string(secret.value)
@@ -98,6 +98,9 @@ def _create_raw_connection() -> pymssql.Connection:
         database = os.getenv("DB_NAME")
         user     = os.getenv("DB_USER")
         password = os.getenv("DB_PASSWORD")
+
+    logger.info("Credential source: %s", _credential_source)
+    logger.info("Connecting to server: %s, database: %s", server, database)
 
     if not all([server, database, user, password]):
         raise RuntimeError(

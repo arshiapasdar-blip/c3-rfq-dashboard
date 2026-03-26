@@ -136,7 +136,7 @@ The sidebar shows `🟢 Key Vault (prod)` when connected to production, or `🟡
 **DB credentials source:** Azure Key Vault `j2-c3-euwe-kv-prod`, secret `DefaultConnection`.
 - Dev vault: `j2-c3-euwe-kv-dev`
 - Prod vault: `j2-c3-euwe-kv-prod`
-- The code uses `AzureCliCredential` (not `DefaultAzureCredential`) — requires `az login` to be active.
+- The code uses `DefaultAzureCredential` — works with Managed Identity on Azure, or `az login` locally.
 
 ---
 
@@ -181,7 +181,7 @@ Each Jerzy request uses ~4,500 input tokens (system prompt + history). This mean
 - Conversation history capped at 10 messages (5 turns) to limit token usage per request
 - DigiKey token cached in module-level dict with 30s expiry buffer
 - Streamlit session state key: `ai_messages` (list of `{role, content}` dicts)
-- DB credentials: Azure Key Vault (`j2-c3-euwe-kv-prod`) via `AzureCliCredential` — NO `.env` fallback for DB (by design, to prevent silent dev DB usage)
+- DB credentials: Azure Key Vault (`j2-c3-euwe-kv-prod`) via `DefaultAzureCredential` — uses Managed Identity on Azure, `az login` locally
 - VPN required for remote access — SQL Server is on J2 internal network
 - Sidebar shows active credential source (`🟢 Key Vault (prod)` or `🟡 .env (dev/fallback)`)
 
