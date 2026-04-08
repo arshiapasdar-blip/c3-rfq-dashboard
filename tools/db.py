@@ -38,6 +38,7 @@ VALID_DATE_FILTER = ""
 _PROD_VAULT_URL  = "https://j2-c3-euwe-kv-prod.vault.azure.net/"
 _KV_SECRET_NAME  = "DefaultConnectionAz"
 _credential_source: str = "unknown"  # set on first connection attempt
+_kv_cache: dict = {"tried": False, "result": None}  # cache KV result across calls
 
 
 def _parse_connection_string(cs: str) -> dict:
@@ -52,16 +53,30 @@ def _parse_connection_string(cs: str) -> dict:
 
 
 def _get_kv_credentials():
-    """Fetch prod connection string from Azure Key Vault. Returns None on any failure."""
+    """Fetch prod connection string from Azure Key Vault. Returns None on any failure.
+    Results are cached so DefaultAzureCredential only runs once."""
+    if _kv_cache["tried"]:
+        return _kv_cache["result"]
+    _kv_cache["tried"] = True
+
+    # Skip Key Vault entirely if .env has DB creds (fast local dev)
+    if all(os.getenv(k) for k in ("DB_SERVER", "DB_NAME", "DB_USER", "DB_PASSWORD")):
+        logger.info("DB credentials found in .env, skipping Key Vault.")
+        _kv_cache["result"] = None
+        return None
+
     if not _AZURE_AVAILABLE:
+        _kv_cache["result"] = None
         return None
     try:
         credential = DefaultAzureCredential()
         client = SecretClient(vault_url=_PROD_VAULT_URL, credential=credential)
         secret = client.get_secret(_KV_SECRET_NAME)
-        return _parse_connection_string(secret.value)
+        _kv_cache["result"] = _parse_connection_string(secret.value)
+        return _kv_cache["result"]
     except Exception as e:
         logger.warning("Key Vault fetch failed, falling back to .env: %s", e)
+        _kv_cache["result"] = None
         return None
 
 

@@ -190,35 +190,39 @@ _R[("Total Parts Requested", "Sales Rep")] = dict(
     customer_col=None, supplier_col=None, mpn_col=None,
 )
 
-# ── Quoted Parts ──────────────────────────────────────────────────────────────
+# ── Quoted Parts (parts with a CustomerQuoteParts record = actually quoted) ───
+_QUOTED_FRM = """CustomerRfqParts p
+    JOIN CustomerRfqs r ON p.CustomerRfqId=r.RfqId
+    JOIN (SELECT DISTINCT CustomerRfqPartId FROM CustomerQuoteParts) qp ON qp.CustomerRfqPartId=p.RfqPartId"""
+
 _R[("Quoted Parts", "Month")] = dict(
     select="FORMAT(r.CreatedDate,'yyyy-MM') AS Label, COUNT(p.RfqPartId) AS Value",
-    frm="CustomerRfqParts p JOIN CustomerRfqs r ON p.CustomerRfqId=r.RfqId",
-    where="r.Deleted=0 AND p.QuoteStatus > 0",
+    frm=_QUOTED_FRM,
+    where="r.Deleted=0",
     group="FORMAT(r.CreatedDate,'yyyy-MM')",
     sort="asc", date_col="r.CreatedDate",
     customer_col=None, supplier_col=None, mpn_col=None,
 )
 _R[("Quoted Parts", "Year")] = dict(
     select="CAST(YEAR(r.CreatedDate) AS VARCHAR) AS Label, COUNT(p.RfqPartId) AS Value",
-    frm="CustomerRfqParts p JOIN CustomerRfqs r ON p.CustomerRfqId=r.RfqId",
-    where="r.Deleted=0 AND p.QuoteStatus > 0",
+    frm=_QUOTED_FRM,
+    where="r.Deleted=0",
     group="YEAR(r.CreatedDate)",
     sort="asc", date_col="r.CreatedDate",
     customer_col=None, supplier_col=None, mpn_col=None,
 )
 _R[("Quoted Parts", "Customer")] = dict(
     select="c.CustomerName AS Label, COUNT(p.RfqPartId) AS Value",
-    frm="CustomerRfqParts p JOIN CustomerRfqs r ON p.CustomerRfqId=r.RfqId JOIN Customers c ON r.CustomerId=c.CustomerId",
-    where="r.Deleted=0 AND p.QuoteStatus > 0",
+    frm=_QUOTED_FRM + " JOIN Customers c ON r.CustomerId=c.CustomerId",
+    where="r.Deleted=0",
     group="c.CustomerName",
     sort="desc", date_col="r.CreatedDate",
     customer_col="c.CustomerName", supplier_col=None, mpn_col=None,
 )
 _R[("Quoted Parts", "MPN")] = dict(
     select=f"LTRIM(RTRIM(p.Mpn)) AS Label, COUNT(p.RfqPartId) AS Value",
-    frm="CustomerRfqParts p JOIN CustomerRfqs r ON p.CustomerRfqId=r.RfqId",
-    where=f"r.Deleted=0 AND p.QuoteStatus > 0 AND p.Mpn IS NOT NULL AND LEN(LTRIM(RTRIM(p.Mpn)))>2 AND LOWER(LTRIM(RTRIM(p.Mpn))) NOT IN ({DIRTY_MPN_SQL})",
+    frm=_QUOTED_FRM,
+    where=f"r.Deleted=0 AND p.Mpn IS NOT NULL AND LEN(LTRIM(RTRIM(p.Mpn)))>2 AND LOWER(LTRIM(RTRIM(p.Mpn))) NOT IN ({DIRTY_MPN_SQL})",
     group="LTRIM(RTRIM(p.Mpn))",
     sort="desc", date_col="r.CreatedDate",
     customer_col=None, supplier_col=None, mpn_col="p.Mpn",
@@ -231,8 +235,8 @@ _R[("Quoted Parts", "Sourcing Status")] = dict(
         WHEN 50 THEN 'Won' WHEN 60 THEN 'Closed'
         ELSE CONCAT('Status ',CAST(p.SourcingStatus AS VARCHAR)) END AS Label,
         COUNT(p.RfqPartId) AS Value""",
-    frm="CustomerRfqParts p JOIN CustomerRfqs r ON p.CustomerRfqId=r.RfqId",
-    where="r.Deleted=0 AND p.QuoteStatus > 0",
+    frm=_QUOTED_FRM,
+    where="r.Deleted=0",
     group="p.SourcingStatus",
     sort="desc", date_col="r.CreatedDate",
     customer_col=None, supplier_col=None, mpn_col=None,
@@ -298,11 +302,13 @@ _R[("SRFQ Count", "Supplier")] = dict(
     customer_col=None, supplier_col="s.SupplierName", mpn_col=None,
 )
 
-# ── Responded SRFQs ───────────────────────────────────────────────────────────
+# ── Responded SRFQs (Status=50 OR has a ResponsePrice) ───────────────────────
+_RESPONDED_WHERE = "(sr.SupplierRfqStatus=50 OR sr.ResponsePrice IS NOT NULL)"
+
 _R[("Responded SRFQs", "Month")] = dict(
     select="FORMAT(sr.CreatedDate,'yyyy-MM') AS Label, COUNT(sr.RfqId) AS Value",
     frm="SupplierRfqs sr",
-    where="sr.SupplierRfqStatus=50",
+    where=_RESPONDED_WHERE,
     group="FORMAT(sr.CreatedDate,'yyyy-MM')",
     sort="asc", date_col="sr.CreatedDate",
     customer_col=None, supplier_col=None, mpn_col=None,
@@ -310,7 +316,7 @@ _R[("Responded SRFQs", "Month")] = dict(
 _R[("Responded SRFQs", "Year")] = dict(
     select="CAST(YEAR(sr.CreatedDate) AS VARCHAR) AS Label, COUNT(sr.RfqId) AS Value",
     frm="SupplierRfqs sr",
-    where="sr.SupplierRfqStatus=50",
+    where=_RESPONDED_WHERE,
     group="YEAR(sr.CreatedDate)",
     sort="asc", date_col="sr.CreatedDate",
     customer_col=None, supplier_col=None, mpn_col=None,
@@ -318,7 +324,7 @@ _R[("Responded SRFQs", "Year")] = dict(
 _R[("Responded SRFQs", "Supplier")] = dict(
     select="s.SupplierName AS Label, COUNT(sr.RfqId) AS Value",
     frm="SupplierRfqs sr JOIN Suppliers s ON sr.SupplierId=s.SupplierId",
-    where="sr.SupplierRfqStatus=50",
+    where=_RESPONDED_WHERE,
     group="s.SupplierName",
     sort="desc", date_col="sr.CreatedDate",
     customer_col=None, supplier_col="s.SupplierName", mpn_col=None,
@@ -395,7 +401,7 @@ _R[("Responded SRFQs", "MPN")] = dict(
     select=f"LTRIM(RTRIM(crfqp.Mpn)) AS Label, COUNT(sr.RfqId) AS Value",
     frm="""SupplierRfqs sr
            JOIN CustomerRfqParts crfqp ON sr.CustomerRfqPartId = crfqp.RfqPartId""",
-    where=f"sr.SupplierRfqStatus=50 AND crfqp.Mpn IS NOT NULL AND LEN(LTRIM(RTRIM(crfqp.Mpn)))>2 AND LOWER(LTRIM(RTRIM(crfqp.Mpn))) NOT IN ({DIRTY_MPN_SQL})",
+    where=f"(sr.SupplierRfqStatus=50 OR sr.ResponsePrice IS NOT NULL) AND crfqp.Mpn IS NOT NULL AND LEN(LTRIM(RTRIM(crfqp.Mpn)))>2 AND LOWER(LTRIM(RTRIM(crfqp.Mpn))) NOT IN ({DIRTY_MPN_SQL})",
     group="LTRIM(RTRIM(crfqp.Mpn))",
     sort="desc", date_col="sr.CreatedDate",
     customer_col=None, supplier_col=None, mpn_col="crfqp.Mpn",
@@ -511,6 +517,7 @@ def run_report(
     filter_customer: str = "",
     filter_supplier: str = "",
     filter_mpn: str = "",
+    hub_sql: str = "",
 ) -> pd.DataFrame:
     """
     Builds and runs a dynamic SQL query.
@@ -549,6 +556,10 @@ def run_report(
     if filter_mpn.strip() and tmpl["mpn_col"]:
         where_parts.append(f"{tmpl['mpn_col']} LIKE %(mpn_f)s")
         params["mpn_f"] = f"%{filter_mpn.strip()}%"
+
+    if hub_sql.strip():
+        # hub_sql starts with "AND ..." — strip the AND to fit into where_parts
+        where_parts.append(hub_sql.strip().removeprefix("AND ").strip())
 
     where_clause = " AND ".join(f"({w})" for w in where_parts if w.strip())
     order_clause = "Value DESC" if tmpl["sort"] == "desc" else "Label ASC"
@@ -601,7 +612,8 @@ _WR_NUM[("Win Rate (%)", "Sales Rep")] = dict(
 
 
 def _run_numerator(tmpl_key: tuple, start_date: str, end_date: str, top_n: int,
-                   filter_customer: str, filter_supplier: str, filter_mpn: str) -> pd.DataFrame:
+                   filter_customer: str, filter_supplier: str, filter_mpn: str,
+                   hub_sql: str = "") -> pd.DataFrame:
     """Run a query from the Win Rate numerator registry using the same builder as run_report."""
     if tmpl_key not in _WR_NUM:
         return pd.DataFrame()
@@ -614,6 +626,8 @@ def _run_numerator(tmpl_key: tuple, start_date: str, end_date: str, top_n: int,
     if filter_customer.strip() and tmpl["customer_col"]:
         where_parts.append(f"{tmpl['customer_col']} LIKE %(cust_f)s")
         params["cust_f"] = f"%{filter_customer.strip()}%"
+    if hub_sql.strip():
+        where_parts.append(hub_sql.strip().removeprefix("AND ").strip())
     where_clause = " AND ".join(f"({w})" for w in where_parts if w.strip())
     order_clause = "Value DESC" if tmpl["sort"] == "desc" else "Label ASC"
     top_clause = f"TOP {top_n} " if top_n else ""
@@ -639,30 +653,31 @@ def run_computed_report(
     filter_customer: str = "",
     filter_supplier: str = "",
     filter_mpn: str = "",
+    hub_sql: str = "",
 ) -> pd.DataFrame:
     """
     Computes ratio metrics that require two queries.
-    Win Rate (%)     = Won CRFQs / Total CRFQs × 100
+    Win Rate (%)     = Won Part Lines / Total Part Lines × 100
     Response Rate (%) = Responded SRFQs / Total SRFQs × 100
     Returns DataFrame with Label, Value (float %).
     """
     if metric == "Win Rate (%)":
         df_num = _run_numerator(
             ("Win Rate (%)", dimension), start_date, end_date, top_n,
-            filter_customer, filter_supplier, filter_mpn,
+            filter_customer, filter_supplier, filter_mpn, hub_sql,
         )
         df_den = run_report(
-            "CRFQ Count", dimension, start_date, end_date, top_n,
-            filter_customer, filter_supplier, filter_mpn,
+            "Total Parts Requested", dimension, start_date, end_date, top_n,
+            filter_customer, filter_supplier, filter_mpn, hub_sql,
         )
     elif metric == "Response Rate (%)":
         df_num = run_report(
             "Responded SRFQs", dimension, start_date, end_date, top_n,
-            filter_customer, filter_supplier, filter_mpn,
+            filter_customer, filter_supplier, filter_mpn, hub_sql,
         )
         df_den = run_report(
             "SRFQ Count", dimension, start_date, end_date, top_n,
-            filter_customer, filter_supplier, filter_mpn,
+            filter_customer, filter_supplier, filter_mpn, hub_sql,
         )
     else:
         logger.warning("run_computed_report called with unknown metric: %s", metric)
@@ -692,14 +707,15 @@ def run_any_report(
     filter_customer: str = "",
     filter_supplier: str = "",
     filter_mpn: str = "",
+    hub_sql: str = "",
 ) -> pd.DataFrame:
     """Unified dispatcher — use this in the UI instead of calling run_report directly."""
     if metric in COMPUTED_METRICS:
         return run_computed_report(
             metric, dimension, start_date, end_date, top_n,
-            filter_customer, filter_supplier, filter_mpn,
+            filter_customer, filter_supplier, filter_mpn, hub_sql,
         )
     return run_report(
         metric, dimension, start_date, end_date, top_n,
-        filter_customer, filter_supplier, filter_mpn,
+        filter_customer, filter_supplier, filter_mpn, hub_sql,
     )

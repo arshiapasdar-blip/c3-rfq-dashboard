@@ -262,18 +262,17 @@ def get_top_manufacturers(start_date: str, end_date: str, limit: int = 10) -> pd
 def get_margin_analysis(start_date: str, end_date: str) -> pd.DataFrame:
     sql = f"""
         SELECT
-            FORMAT(sr.CreatedDate, 'yyyy-MM') AS Period,
-            SUM(ISNULL(sr.SalePrice, 0) * ISNULL(sr.SaleQty, 0))         AS SaleValue,
-            SUM(ISNULL(sr.ResponsePrice, 0) * ISNULL(sr.ResponseQty, 0)) AS CostValue
-        FROM SupplierRfqs sr
-        JOIN CustomerRfqParts p ON sr.CustomerRfqPartId = p.RfqPartId
-        WHERE p.QuoteStatus = 30
-          AND sr.SalePrice IS NOT NULL
-          AND sr.ResponsePrice IS NOT NULL
-          AND sr.CreatedDate >= %(start)s
-          AND sr.CreatedDate < DATEADD(day, 1, CAST(%(end)s AS DATE))
-          {SRFQ_DATE_BOUNDS}
-        GROUP BY FORMAT(sr.CreatedDate, 'yyyy-MM')
+            FORMAT(qp.CreatedDate, 'yyyy-MM') AS Period,
+            SUM(ISNULL(qp.SalePrice, 0) * ISNULL(qp.SaleQty, 0))       AS SaleValue,
+            SUM(ISNULL(qp.SupplierPrice, 0) * ISNULL(qp.SaleQty, 0))   AS CostValue
+        FROM CustomerQuoteParts qp
+        JOIN CustomerRfqs r ON qp.CustomerRfqId = r.RfqId
+        WHERE r.Deleted = 0
+          AND qp.SalePrice > 0
+          AND qp.SupplierPrice IS NOT NULL
+          AND qp.CreatedDate >= %(start)s
+          AND qp.CreatedDate < DATEADD(day, 1, CAST(%(end)s AS DATE))
+        GROUP BY FORMAT(qp.CreatedDate, 'yyyy-MM')
         ORDER BY Period
     """
     df = run_query(sql, params={"start": start_date, "end": end_date})

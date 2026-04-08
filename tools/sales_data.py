@@ -15,7 +15,7 @@ DATE_BOUNDS = ""
 DATE_BOUNDS_DIRECT = ""
 
 
-def get_crfq_kpis(start_date: str, end_date: str) -> dict:
+def get_crfq_kpis(start_date: str, end_date: str, hub_sql: str = "") -> dict:
     sql = f"""
         SELECT
             COUNT(*)                        AS total_crfqs,
@@ -31,6 +31,7 @@ def get_crfq_kpis(start_date: str, end_date: str) -> dict:
           {DATE_BOUNDS}
           AND r.CreatedDate >= %(start)s
           AND r.CreatedDate < DATEADD(day, 1, CAST(%(end)s AS DATE))
+          {hub_sql}
     """
     df = run_query(sql, params={"start": start_date, "end": end_date})
     if df.empty:
@@ -46,7 +47,7 @@ def get_crfq_kpis(start_date: str, end_date: str) -> dict:
     }
 
 
-def get_top_customers(start_date: str, end_date: str, limit: int = 10) -> pd.DataFrame:
+def get_top_customers(start_date: str, end_date: str, limit: int = 10, hub_sql: str = "") -> pd.DataFrame:
     sql = f"""
         SELECT TOP {limit}
             c.CustomerName,
@@ -59,23 +60,25 @@ def get_top_customers(start_date: str, end_date: str, limit: int = 10) -> pd.Dat
           {DATE_BOUNDS}
           AND r.CreatedDate >= %(start)s
           AND r.CreatedDate < DATEADD(day, 1, CAST(%(end)s AS DATE))
+          {hub_sql}
         GROUP BY c.CustomerName
         ORDER BY RfqCount DESC
     """
     return run_query(sql, params={"start": start_date, "end": end_date})
 
 
-def get_monthly_crfq_trend_range(start_date: str, end_date: str) -> pd.DataFrame:
+def get_monthly_crfq_trend_range(start_date: str, end_date: str, hub_sql: str = "") -> pd.DataFrame:
     sql = f"""
         SELECT
-            FORMAT(CreatedDate, 'yyyy-MM') AS Period,
+            FORMAT(r.CreatedDate, 'yyyy-MM') AS Period,
             COUNT(*) AS RfqCount
-        FROM CustomerRfqs
-        WHERE Deleted = 0
+        FROM CustomerRfqs r
+        WHERE r.Deleted = 0
           {DATE_BOUNDS}
-          AND CreatedDate >= %(start)s
-          AND CreatedDate < DATEADD(day, 1, CAST(%(end)s AS DATE))
-        GROUP BY FORMAT(CreatedDate, 'yyyy-MM')
+          AND r.CreatedDate >= %(start)s
+          AND r.CreatedDate < DATEADD(day, 1, CAST(%(end)s AS DATE))
+          {hub_sql}
+        GROUP BY FORMAT(r.CreatedDate, 'yyyy-MM')
         ORDER BY Period
     """
     df = run_query(sql, params={"start": start_date, "end": end_date})
@@ -105,7 +108,7 @@ def get_monthly_crfq_volume(year: int) -> pd.DataFrame:
     return df
 
 
-def get_rfq_result_breakdown(start_date: str, end_date: str) -> pd.DataFrame:
+def get_rfq_result_breakdown(start_date: str, end_date: str, hub_sql: str = "") -> pd.DataFrame:
     sql = f"""
         SELECT
             CASE
@@ -123,6 +126,7 @@ def get_rfq_result_breakdown(start_date: str, end_date: str) -> pd.DataFrame:
           {DATE_BOUNDS}
           AND r.CreatedDate >= %(start)s
           AND r.CreatedDate < DATEADD(day, 1, CAST(%(end)s AS DATE))
+          {hub_sql}
         GROUP BY
             CASE
                 WHEN p.QuoteStatus = 30               THEN 'Won'
@@ -135,7 +139,7 @@ def get_rfq_result_breakdown(start_date: str, end_date: str) -> pd.DataFrame:
     return run_query(sql, params={"start": start_date, "end": end_date})
 
 
-def get_top_mpns(start_date: str, end_date: str, limit: int = 20) -> pd.DataFrame:
+def get_top_mpns(start_date: str, end_date: str, limit: int = 20, hub_sql: str = "") -> pd.DataFrame:
     sql = f"""
         SELECT TOP {limit}
             LTRIM(RTRIM(p.Mpn)) AS Mpn,
@@ -147,6 +151,7 @@ def get_top_mpns(start_date: str, end_date: str, limit: int = 20) -> pd.DataFram
           {DATE_BOUNDS}
           AND r.CreatedDate >= %(start)s
           AND r.CreatedDate < DATEADD(day, 1, CAST(%(end)s AS DATE))
+          {hub_sql}
           AND {_mpn_filter('p')}
         GROUP BY p.Mpn
         ORDER BY RequestCount DESC
@@ -154,7 +159,7 @@ def get_top_mpns(start_date: str, end_date: str, limit: int = 20) -> pd.DataFram
     return run_query(sql, params={"start": start_date, "end": end_date})
 
 
-def get_sales_rep_leaderboard(start_date: str, end_date: str) -> pd.DataFrame:
+def get_sales_rep_leaderboard(start_date: str, end_date: str, hub_sql: str = "") -> pd.DataFrame:
     sql = f"""
         SELECT
             COALESCE(u.DisplayName, 'Unassigned')                AS SalesRep,
@@ -168,6 +173,7 @@ def get_sales_rep_leaderboard(start_date: str, end_date: str) -> pd.DataFrame:
           {DATE_BOUNDS}
           AND r.CreatedDate >= %(start)s
           AND r.CreatedDate < DATEADD(day, 1, CAST(%(end)s AS DATE))
+          {hub_sql}
         GROUP BY u.DisplayName
         ORDER BY RfqCount DESC
     """
@@ -179,7 +185,7 @@ def get_sales_rep_leaderboard(start_date: str, end_date: str) -> pd.DataFrame:
     return df
 
 
-def get_quote_value_by_customer(start_date: str, end_date: str, limit: int = 10) -> pd.DataFrame:
+def get_quote_value_by_customer(start_date: str, end_date: str, limit: int = 10, hub_sql: str = "") -> pd.DataFrame:
     sql = f"""
         SELECT TOP {limit}
             c.CustomerName,
@@ -194,6 +200,7 @@ def get_quote_value_by_customer(start_date: str, end_date: str, limit: int = 10)
           AND qp.SaleQty IS NOT NULL
           AND qp.CreatedDate >= %(start)s
           AND qp.CreatedDate < DATEADD(day, 1, CAST(%(end)s AS DATE))
+          {hub_sql}
         GROUP BY c.CustomerName
         ORDER BY TotalQuoteValue DESC
     """
@@ -203,7 +210,7 @@ def get_quote_value_by_customer(start_date: str, end_date: str, limit: int = 10)
     return df
 
 
-def get_customer_country_distribution(start_date: str, end_date: str) -> pd.DataFrame:
+def get_customer_country_distribution(start_date: str, end_date: str, hub_sql: str = "") -> pd.DataFrame:
     sql = f"""
         SELECT
             c.Country,
@@ -214,6 +221,7 @@ def get_customer_country_distribution(start_date: str, end_date: str) -> pd.Data
           {DATE_BOUNDS}
           AND r.CreatedDate >= %(start)s
           AND r.CreatedDate < DATEADD(day, 1, CAST(%(end)s AS DATE))
+          {hub_sql}
           AND c.Country IS NOT NULL
           AND LEN(LTRIM(RTRIM(c.Country))) > 2
           AND LTRIM(RTRIM(c.Country)) NOT IN ('string', 'I', '6', 'N/A', 'n/a')

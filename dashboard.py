@@ -19,6 +19,7 @@ import tools.deepdive_data as deepdive_data
 import tools.chat_agent as chat_agent
 from tools.report_data import METRIC_DIMENSIONS, COMPUTED_METRICS, run_any_report
 from tools.db import run_query, get_credential_source
+from tools.auth import get_current_user_email, resolve_user_display, get_hub_names, build_hub_scope
 
 # ─── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -398,16 +399,18 @@ def get_earliest_date() -> date:
 # All 18 dashboard queries run concurrently inside a single cached function.
 # TTL raised to 15 min — reduces cold-load frequency without losing freshness.
 @st.cache_data(ttl=900, show_spinner=False)
-def load_dashboard_data(start_str: str, end_str: str) -> dict:
+def load_dashboard_data(start_str: str, end_str: str, hub_scope_key: str = "all") -> dict:
+    # hub_scope_key is used for cache partitioning — rebuild the SQL from it
+    _hub_sql = build_hub_scope(hub_scope_key) if hub_scope_key != "all" else ""
     tasks = {
-        "crfq_kpis":           (sales_data.get_crfq_kpis,                      [start_str, end_str]),
-        "df_customers":        (sales_data.get_top_customers,                   [start_str, end_str]),
-        "df_monthly_crfq":     (sales_data.get_monthly_crfq_trend_range,        [start_str, end_str]),
-        "df_rfq_results":      (sales_data.get_rfq_result_breakdown,            [start_str, end_str]),
-        "df_mpns":             (sales_data.get_top_mpns,                        [start_str, end_str]),
-        "df_sales_reps":       (sales_data.get_sales_rep_leaderboard,           [start_str, end_str]),
-        "df_quote_value":      (sales_data.get_quote_value_by_customer,         [start_str, end_str]),
-        "df_countries":        (sales_data.get_customer_country_distribution,   [start_str, end_str]),
+        "crfq_kpis":           (sales_data.get_crfq_kpis,                      [start_str, end_str, _hub_sql]),
+        "df_customers":        (sales_data.get_top_customers,                   [start_str, end_str, 10, _hub_sql]),
+        "df_monthly_crfq":     (sales_data.get_monthly_crfq_trend_range,        [start_str, end_str, _hub_sql]),
+        "df_rfq_results":      (sales_data.get_rfq_result_breakdown,            [start_str, end_str, _hub_sql]),
+        "df_mpns":             (sales_data.get_top_mpns,                        [start_str, end_str, 20, _hub_sql]),
+        "df_sales_reps":       (sales_data.get_sales_rep_leaderboard,           [start_str, end_str, _hub_sql]),
+        "df_quote_value":      (sales_data.get_quote_value_by_customer,         [start_str, end_str, 10, _hub_sql]),
+        "df_countries":        (sales_data.get_customer_country_distribution,   [start_str, end_str, _hub_sql]),
         "srfq_kpis":           (sourcing_data.get_srfq_kpis,                    [start_str, end_str]),
         "top_supplier_value":  (sourcing_data.get_top_supplier_value,           [start_str, end_str]),
         "df_suppliers":        (sourcing_data.get_top_suppliers,                [start_str, end_str]),
@@ -487,6 +490,25 @@ with st.sidebar:
     end_str = end_date.isoformat()
 
     st.markdown("---")
+
+    # ── Hub filter ────────────────────────────────────────────────────────────
+    st.subheader("Hub")
+    _hub_names = get_hub_names()
+    selected_hub = st.selectbox("Filter by Hub", ["All Hubs"] + _hub_names)
+    hub_scope_key = selected_hub if selected_hub != "All Hubs" else "all"
+    hub_sql = build_hub_scope(selected_hub)
+    st.caption("Applies to Sales & Report Builder only")
+
+    st.markdown("---")
+
+    # ── User identity ─────────────────────────────────────────────────────────
+    _user_email = get_current_user_email()
+    if _user_email:
+        _uid, _uname = resolve_user_display(_user_email)
+        st.caption(f"User: {_uname}")
+    else:
+        st.caption("User: Not identified")
+
     if st.button("Refresh Data", use_container_width=True):
         load_dashboard_data.clear()
         st.rerun()
@@ -494,7 +516,10 @@ with st.sidebar:
     st.markdown("---")
     st.caption(f"Last refreshed: {datetime.now().strftime('%H:%M:%S')}")
     st.caption("Data: C3_Web SQL Server")
-    st.caption("Showing all historical data.")
+    if selected_hub != "All Hubs":
+        st.caption(f"Filtered: {selected_hub} hub")
+    else:
+        st.caption("Showing all historical data.")
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -521,7 +546,7 @@ def chart_error(e):
 # ─── Load all data ────────────────────────────────────────────────────────────
 try:
     with st.spinner("Loading dashboard data..."):
-        _data = load_dashboard_data(start_str, end_str)
+        _data = load_dashboard_data(start_str, end_str, hub_scope_key)
     crfq_kpis             = _data["crfq_kpis"]
     if crfq_kpis is None:
         raise RuntimeError(
@@ -1147,6 +1172,7 @@ with tab_reports:
                             filter_customer=filter_customer,
                             filter_supplier=filter_supplier,
                             filter_mpn=filter_mpn,
+                            hub_sql=hub_sql,
                         )
                         _metric_dfs[_metric] = _df
                     except RuntimeError as _e:
